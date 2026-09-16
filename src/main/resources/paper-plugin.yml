@@ -1,0 +1,6 @@
+name: Fadms
+version: '${version}'
+main: info.preva1l.fadms.Fadms
+api-version: '26.2'
+description: Stacks mobs spawned by spawners.
+authors: [ Preva1l ]
