@@ -28,6 +28,7 @@ import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.entity.EntitySpawnEvent;
 import org.bukkit.event.entity.SlimeSplitEvent;
 import org.bukkit.event.entity.SpawnerSpawnEvent;
 import org.bukkit.inventory.ItemStack;
@@ -45,6 +46,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class StackListener implements Listener {
     private final Fadms plugin;
     private final NamespacedKey stackKey;
+    private final NamespacedKey fromSpawnerKey;
     private final NamespacedKey playerPlacedKey;
     private final MiniMessage miniMessage = MiniMessage.miniMessage();
     private final Set<String> wholeStackDamageTypes;
@@ -52,6 +54,7 @@ public final class StackListener implements Listener {
     StackListener(Fadms plugin) {
         this.plugin = plugin;
         this.stackKey = new NamespacedKey(plugin, "stack-size");
+        this.fromSpawnerKey = new NamespacedKey(plugin, "from-spawner");
         this.playerPlacedKey = new NamespacedKey(plugin, "player-placed");
         this.wholeStackDamageTypes = resolveWholeStackDamageTypes();
     }
@@ -71,16 +74,27 @@ public final class StackListener implements Listener {
     public void onSpawnerSpawn(SpawnerSpawnEvent event) {
         CreatureSpawner spawner = event.getSpawner();
         if (spawner == null || !(event.getEntity() instanceof Mob entity)) return;
-        if (settings().spawner.onlyPlayerPlaced && !spawner.getPersistentDataContainer().has(playerPlacedKey)) return;
+        FadmsConfig.Spawner config = settings().spawner;
+        if (config.onlyPlayerPlaced && !spawner.getPersistentDataContainer().has(playerPlacedKey)) return;
 
         double range = spawner.getSpawnRange();
-        Mob stack = spawner.getLocation()
-            .getNearbyEntitiesByType(
-                Mob.class,
-                range * settings().spawner.searchRangeHorizontal,
-                range * settings().spawner.searchRangeVertical
-            )
-            .stream()
+        tryStack(event, entity, spawner.getLocation(), range * config.searchRangeHorizontal, range * config.searchRangeVertical, true);
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onCreatureSpawn(CreatureSpawnEvent event) {
+        FadmsConfig.AllMobs config = settings().allMobs;
+        if (!config.enabled || config.ignoredSpawnReasons.contains(event.getSpawnReason())) return;
+        // spawner spawns fire SpawnerSpawnEvent first, which has already tagged or cancelled them
+        if (!(event.getEntity() instanceof Mob entity) || stackSize(entity) > 0) return;
+
+        tryStack(event, entity, entity.getLocation(), config.searchRadiusHorizontal, config.searchRadiusVertical, false);
+    }
+
+    private void tryStack(EntitySpawnEvent event, Mob entity, Location center, double horizontal, double vertical, boolean fromSpawner) {
+        if (entity.isInsideVehicle() || !entity.getPassengers().isEmpty()) return;
+
+        Mob stack = center.getNearbyEntitiesByType(Mob.class, horizontal, vertical).stream()
             .filter(candidate -> candidate.getType() == entity.getType() && candidate.isValid() && !candidate.isInsideVehicle())
             .filter(candidate -> {
                 int size = stackSize(candidate);
@@ -90,7 +104,7 @@ public final class StackListener implements Listener {
             .orElse(null);
 
         if (stack == null) {
-            startStack(entity);
+            startStack(entity, fromSpawner);
             return;
         }
 
@@ -100,7 +114,9 @@ public final class StackListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onStackedMobAttack(EntityDamageByEntityEvent event) {
-        if (settings().stack.preventDamage && stackSize(event.getDamager()) > 0) event.setCancelled(true);
+        if (settings().spawner.preventDamage && event.getDamager().getPersistentDataContainer().has(fromSpawnerKey)) {
+            event.setCancelled(true);
+        }
     }
 
     @EventHandler(ignoreCancelled = true)
@@ -266,13 +282,16 @@ public final class StackListener implements Listener {
         return entity.getPersistentDataContainer().getOrDefault(stackKey, PersistentDataType.INTEGER, 0);
     }
 
-    private void startStack(Mob mob) {
-        FadmsConfig.Stack stack = settings().stack;
-        if (stack.forceAdult && mob instanceof Ageable ageable) ageable.setAdult();
-        if (stack.cubeMobSize > 0 && mob instanceof AbstractCubeMob cube) cube.setSize(stack.cubeMobSize);
-        if (stack.disableItemPickup) mob.setCanPickupItems(false);
-        if (stack.disableAwareness) mob.setAware(false);
+    private void startStack(Mob mob, boolean fromSpawner) {
         mob.getPersistentDataContainer().set(stackKey, PersistentDataType.INTEGER, 1);
+        if (!fromSpawner) return;
+
+        FadmsConfig.Spawner config = settings().spawner;
+        mob.getPersistentDataContainer().set(fromSpawnerKey, PersistentDataType.BYTE, (byte) 1);
+        if (config.forceAdult && mob instanceof Ageable ageable) ageable.setAdult();
+        if (config.cubeMobSize > 0 && mob instanceof AbstractCubeMob cube) cube.setSize(config.cubeMobSize);
+        if (config.disableItemPickup) mob.setCanPickupItems(false);
+        if (config.disableAwareness) mob.setAware(false);
     }
 
     private void setStackSize(Mob stack, int size) {

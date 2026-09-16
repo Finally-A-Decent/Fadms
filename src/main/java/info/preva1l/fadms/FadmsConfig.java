@@ -2,6 +2,7 @@ package info.preva1l.fadms;
 
 import de.exlll.configlib.Comment;
 import de.exlll.configlib.Configuration;
+import org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason;
 
 import java.util.List;
 
@@ -10,10 +11,20 @@ public class FadmsConfig {
     @Comment("Maximum number of mobs a single stack can hold.")
     public int maxStackSize = 50;
 
-    public Spawner spawner = new Spawner();
     public Stack stack = new Stack();
+    public Spawner spawner = new Spawner();
+    public AllMobs allMobs = new AllMobs();
     public CubeMobs cubeMobs = new CubeMobs();
     public Death death = new Death();
+
+    @Configuration
+    public static class Stack {
+        @Comment("Whether stacks show a name tag above them with the mob count.")
+        public boolean showName = true;
+
+        @Comment("MiniMessage format of the stack name tag. Placeholders: <count>, <type>")
+        public String nameFormat = "<gold><b><count></b></gold> <yellow><type>s</yellow>";
+    }
 
     @Configuration
     public static class Spawner {
@@ -29,17 +40,14 @@ public class FadmsConfig {
         })
         public double searchRangeHorizontal = 2.0;
         public double searchRangeVertical = 4.5;
-    }
 
-    @Configuration
-    public static class Stack {
-        @Comment("Whether stacks show a name tag above them with the mob count.")
-        public boolean showName = true;
-
-        @Comment("MiniMessage format of the stack name tag. Placeholders: <count>, <type>")
-        public String nameFormat = "<gold><b><count></b></gold> <yellow><type>s</yellow>";
-
-        @Comment("Turn baby mobs into adults when they start a stack.")
+        @Comment({
+            "",
+            "The options below only apply to mobs stacked from a spawner.",
+            "Mobs stacked through all-mobs keep their normal behaviour.",
+            "",
+            "Turn baby mobs into adults when they start a stack.",
+        })
         public boolean forceAdult = true;
 
         @Comment("Size given to slimes and magma cubes when they start a stack. 0 leaves the size untouched.")
@@ -53,6 +61,22 @@ public class FadmsConfig {
 
         @Comment("Stacked mobs cannot deal damage to other entities.")
         public boolean preventDamage = true;
+    }
+
+    @Configuration
+    public static class AllMobs {
+        @Comment({
+            "Stack every mob that spawns, not just mobs that come out of spawners",
+            "(natural spawns, spawn eggs, breeding, ...). Mobs already in the world are not affected.",
+        })
+        public boolean enabled = false;
+
+        @Comment("Spawn reasons that are never stacked (names from Paper's CreatureSpawnEvent.SpawnReason).")
+        public List<SpawnReason> ignoredSpawnReasons = List.of(SpawnReason.CUSTOM, SpawnReason.SLIME_SPLIT);
+
+        @Comment("How far around a newly spawned mob to look for a stack to join, in blocks.")
+        public double searchRadiusHorizontal = 8.0;
+        public double searchRadiusVertical = 4.0;
     }
 
     @Configuration
